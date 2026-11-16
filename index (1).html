@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard Tugas Kuliah</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #eef2f6; --surface: #ffffff; --ink: #16233b; --muted: #5d6b82; --line: #d5dde8;
+    --late: #c4283c; --soon: #b86e00; --ok: #23764a; --accent: #2a55d8;
+    --late-bg: #fbe6e9; --soon-bg: #fdf0d9; --ok-bg: #e0f1e8; --neutral-bg: #e4eaf3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1726; --surface: #172238; --ink: #e8eef9; --muted: #98a6bf; --line: #2a3853;
+      --late: #ff8895; --soon: #f3b34f; --ok: #6fd09b; --accent: #8fabff;
+      --late-bg: #3a1b24; --soon-bg: #382a10; --ok-bg: #163a29; --neutral-bg: #22304b;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-padding-top: 1rem; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: "Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", sans-serif; line-height: 1.45; }
+  main { max-width: 760px; margin: 0 auto; padding: 2rem 1rem 4rem; }
+  h1 { font-size: clamp(1.8rem, 5vw, 2.6rem); font-weight: 800; letter-spacing: -0.02em; margin: 0 0 .4rem; line-height: 1.1; }
+  .summary { color: var(--muted); margin: 0 0 1.5rem; font-size: 1.05rem; }
+  .controls { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1.5rem; align-items: center; }
+  .tabs { display: flex; gap: .25rem; background: var(--neutral-bg); padding: .25rem; border-radius: 10px; }
+  button, select { font: inherit; color: var(--ink); }
+  .tabs button { border: 0; background: transparent; padding: .4rem .9rem; border-radius: 7px; cursor: pointer; }
+  .tabs button[aria-pressed="true"] { background: var(--surface); font-weight: 600; }
+  select { padding: .5rem .7rem; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+  button:focus-visible, select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 1.8rem 0 .6rem; display: flex; gap: .5rem; align-items: baseline; }
+  h2 span { color: var(--muted); font-weight: 400; }
+  h2.late { color: var(--late); } h2.soon { color: var(--soon); }
+  ul { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+  li { display: grid; grid-template-columns: 4.2rem 1fr auto; gap: .9rem; padding: .85rem 0; border-bottom: 1px solid var(--line); align-items: center; }
+  .date { text-align: center; line-height: 1.1; }
+  .date b { display: block; font-size: 1.6rem; font-weight: 800; }
+  .date small { color: var(--muted); font-size: .8rem; }
+  .title { font-weight: 600; }
+  .meta { color: var(--muted); font-size: .9rem; }
+  .note { color: var(--muted); font-size: .85rem; margin-top: .15rem; }
+  .pill { font-size: .85rem; font-weight: 600; padding: .25rem .65rem; border-radius: 999px; background: var(--neutral-bg); white-space: nowrap; }
+  .pill.late { background: var(--late-bg); color: var(--late); }
+  .pill.soon { background: var(--soon-bg); color: var(--soon); }
+  .pill.done { background: var(--ok-bg); color: var(--ok); }
+  li.done .title { text-decoration: line-through; color: var(--muted); }
+  .state { padding: 2rem 0; color: var(--muted); }
+  @media (max-width: 480px) { li { grid-template-columns: 3.4rem 1fr; } .pill { grid-column: 2; justify-self: start; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Tugas kuliah</h1>
+  <p class="summary" id="summary" aria-live="polite">Memuat data…</p>
+  <div class="controls">
+    <div class="tabs" role="group" aria-label="Filter status">
+      <button data-f="open" aria-pressed="true">Belum selesai</button>
+      <button data-f="done" aria-pressed="false">Selesai</button>
+      <button data-f="all" aria-pressed="false">Semua</button>
+    </div>
+    <select id="matkul" aria-label="Filter mata kuliah"><option value="">Semua matkul</option></select>
+  </div>
+  <div id="list"></div>
+</main>
+
+<script>
+  // Isi dengan URL web app Apps Script (berakhiran /exec)
+  const API_URL = 'GANTI_DENGAN_URL_WEB_APP';
+  const TOKEN = new URLSearchParams(location.search).get('t') || '';
+  const BULAN = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  const HARI = ['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
+  let tasks = [], filter = 'open';
+
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const daysLeft = (d) => Math.round((startOfDay(d) - startOfDay(new Date())) / 864e5);
+  const hhmm = (d) => String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+
+  function rel(d) {
+    const n = daysLeft(d);
+    if (n < 0) return 'Terlambat ' + (-n) + ' hari';
+    if (n === 0) return 'Hari ini, ' + hhmm(d);
+    if (n === 1) return 'Besok, ' + hhmm(d);
+    return n + ' hari lagi';
+  }
+
+  async function load() {
+    try {
+      const res = await fetch(API_URL + '?t=' + encodeURIComponent(TOKEN));
+      const data = await res.json();
+      if (data.error) throw new Error('Token tidak valid. Buka dashboard lewat perintah /dashboard di bot.');
+      tasks = data.tasks.map((t) => ({ ...t, date: new Date(t.deadline) }));
+      const ms = [...new Set(tasks.map((t) => t.matkul))].sort();
+      $('#matkul').innerHTML = '<option value="">Semua matkul</option>' + ms.map((m) => `<option>${esc(m)}</option>`).join('');
+      render();
+    } catch (e) {
+      $('#summary').textContent = '';
+      $('#list').innerHTML = `<p class="state">${esc(e.message || 'Gagal memuat data.')}</p>`;
+    }
+  }
+
+  function render() {
+    const m = $('#matkul').value;
+    const open = tasks.filter((t) => t.status !== 'Selesai');
+    const next = [...open].sort((a, b) => a.date - b.date)[0];
+    $('#summary').textContent = open.length
+      ? `${open.length} tugas belum selesai. Terdekat: ${next.judul} (${next.matkul}), ${rel(next.date).toLowerCase()}.`
+      : 'Semua tugas sudah selesai.';
+
+    let rows = tasks.filter((t) => (!m || t.matkul === m) &&
+      (filter === 'all' || (filter === 'open') === (t.status !== 'Selesai')));
+    rows.sort((a, b) => a.date - b.date);
+
+    const groups = [
+      ['late', 'Terlambat', (t) => daysLeft(t.date) < 0],
+      ['soon', 'Hari ini dan besok', (t) => daysLeft(t.date) >= 0 && daysLeft(t.date) <= 1],
+      ['', 'Minggu ini', (t) => daysLeft(t.date) >= 2 && daysLeft(t.date) <= 7],
+      ['', 'Nanti', (t) => daysLeft(t.date) > 7],
+    ];
+    let html = '';
+    const isDone = (t) => t.status === 'Selesai';
+    const doneRows = rows.filter(isDone);
+    const openRows = rows.filter((t) => !isDone(t));
+    groups.forEach(([cls, label, fn]) => {
+      const g = openRows.filter(fn);
+      if (g.length) html += section(cls, label, g);
+    });
+    if (doneRows.length) html += section('', 'Selesai', doneRows.reverse());
+    $('#list').innerHTML = html || '<p class="state">Tidak ada tugas di sini. Tambahkan lewat bot dengan perintah /tugas.</p>';
+  }
+
+  function section(cls, label, items) {
+    return `<h2 class="${cls}">${label} <span>${items.length}</span></h2><ul>` + items.map((t) => {
+      const done = t.status === 'Selesai';
+      const n = daysLeft(t.date);
+      const pill = done ? 'done' : n < 0 ? 'late' : n <= 1 ? 'soon' : '';
+      return `<li class="${done ? 'done' : ''}">
+        <div class="date"><b>${t.date.getDate()}</b><small>${BULAN[t.date.getMonth()]}</small></div>
+        <div><div class="title">${esc(t.judul)}</div>
+          <div class="meta">${esc(t.matkul)} · ${HARI[t.date.getDay()]} ${hhmm(t.date)} · ${esc(t.id)}</div>
+          ${t.catatan ? `<div class="note">${esc(t.catatan)}</div>` : ''}</div>
+        <span class="pill ${pill}">${done ? 'Selesai' : rel(t.date)}</span></li>`;
+    }).join('') + '</ul>';
+  }
+
+  document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => {
+    filter = b.dataset.f;
+    document.querySelectorAll('.tabs button').forEach((x) => x.setAttribute('aria-pressed', x === b));
+    render();
+  }));
+  $('#matkul').addEventListener('change', render);
+  load();
+</script>
+</body>
+</html>
